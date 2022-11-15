@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="style.css">
+    <title>Document</title>
+</head>
+<body>
+    <canvas id="space" width="1280" height="720"></canvas>
+    <div>
+        <table>
+            <tr>
+                <td>
+                    <input id="dot">
+                </td>
+                <td>
+                    <input id="x">
+                </td>
+                <td>
+                    <input id="y">
+                </td>
+                <td>
+                    <input id="z">
+                </td>
+                <td id="create_dot">create dot</td>
+            </tr>
+            <tr>
+                <td>
+                    <input id="deldot">
+                </td>
+                <td id="del_dot">del dot</td>
+            </tr>
+            <tr>
+                <td>
+                    <input id="dot1">
+                </td>
+                <td>
+                    <input id="dot2">
+                </td>
+                <td id="create_edge">create edge</td>
+            </tr>
+            <tr>
+                <td>
+                    <input id="deldot1">
+                </td>
+                <td>
+                    <input id="deldot2">
+                </td>
+                <td id="del_edge"> del edge</td>
+            </tr>
+        </table>
+    </div>
+    <script>
+        let scale = 10;
+        /*класс для хранения парамтров точек*/
+        class Dot {
+            constructor(ctx, dot_name, x, y, z){
+                this.ctx = ctx;
+                this.dot_name = dot_name;
+                this.x = x * scale;
+                this.y = y * scale;
+                this.z = z * scale;
+                this.edges = [];
+            }
+
+            /*координаты точки в отображении на плоскость экрана в зависимости от угла поворота пространства*/
+            curCoords(ang_a, ang_b){
+                let dx = this.x * Math.cos(ang_a) + this.y * Math.sin(ang_a);
+                let dy = - this.x * Math.sin(ang_a) + this.y * Math.cos(ang_a);
+                let ddx = dx * Math.cos(ang_b) + this.z * Math.sin(ang_b);
+                let dz = -dx * Math.sin(ang_b) + this.z * Math.cos(ang_b);
+                let cur_x = 640 + dy;
+                let cur_y = 360 - dz;
+                return {cur_x: cur_x, cur_y: cur_y};
+            }
+            /*отрисовка точки с её названием и координатами*/
+            drawDot(ang_a, ang_b){
+                let ctx = this.ctx;
+                let cur_coords = this.curCoords(ang_a, ang_b);
+                ctx.beginPath();
+                ctx.arc(cur_coords.cur_x, cur_coords.cur_y, 4, 0, Math.PI * 2);
+                ctx.fillStyle = "#000000";
+                ctx.fill();
+                ctx.font = "15px sans"; 
+                ctx.fillText(this.dot_name+'('+this.x/scale+';'+this.y/scale+';'+this.z/scale+')', cur_coords.cur_x+5, cur_coords.cur_y+5);
+                ctx.closePath();
+            }
+        }
+        /*класс для хранения данных о ребре*/
+        class Edge{
+            constructor(ctx, dot1, dot2){
+                this.ctx = ctx;
+                this.dot1 = dot1;
+                this.dot2 = dot2;
+            }
+
+            drawEdge(ang_a, ang_b){
+                let ctx = this.ctx;
+                let cur_coords1 = this.dot1.curCoords(ang_a, ang_b);
+                let cur_coords2 = this.dot2.curCoords(ang_a, ang_b);
+                ctx.beginPath();
+                ctx.moveTo(cur_coords1.cur_x, cur_coords1.cur_y);
+                ctx.lineTo(cur_coords2.cur_x, cur_coords2.cur_y);
+                ctx.stroke();
+                ctx.closePath();
+            }
+        }
+        /*класс для хранения параметров пространства со всеми точками и ребрами*/
+        class Space{
+            constructor(ctx){
+                this.ctx = ctx;
+                this.is_rotate = false;
+                this.r = 100;
+                this.dots = new Map();
+                this.edges = new Map();
+                this.ang_a = Math.PI / 3;
+                this.ang_b = Math.PI / 6;
+            }
+            addDot(dot_name, x, y, z){
+                this.dots.set(dot_name, new Dot(this.ctx, dot_name, x, y, z));
+            }
+            addEdge(dot_name1, dot_name2){
+                this.edges.set(dot_name1 + dot_name2, new Edge(this.ctx, this.dots.get(dot_name1), this.dots.get(dot_name2)));
+                this.dots.get(dot_name1).edges.push(dot_name1 + dot_name2);
+                this.dots.get(dot_name2).edges.push(dot_name1 + dot_name2);
+            }
+            delEdge(dot_name1, dot_name2){
+                this.edges.delete(dot_name1 + dot_name2);
+                this.edges.delete(dot_name2 + dot_name1);
+            }
+            delDot(dot_name){
+                let edges = this.dots.get(dot_name).edges;
+                for (let edge of this.dots.get(dot_name).edges){
+                    this.delEdge(edge[0], edge[1]);
+                }
+                this.dots.delete(dot_name);
+            }
+            rotate(dx, dy){
+                if (this.is_rotate){
+                    let dang_a = Math.acos(1 - (dx * dx) / (2 * this.r * this.r));
+                    if (dx > 0){
+                        this.ang_a = (this.ang_a + dang_a) % (2 * Math.PI);
+                    }
+                    else{
+                        this.ang_a = (this.ang_a - dang_a) % (2 * Math.PI);
+                    }
+                    let dang_b = Math.acos(1 - (dy * dy) / (2 * this.r * this.r));
+                    if (dy > 0){
+                        this.ang_b = (this.ang_b + dang_b) % (2 * Math.PI);
+                    }
+                    else{
+                        this.ang_b = (this.ang_b - dang_b) % (2 * Math.PI);
+                    }
+                }
+            }
+
+        }
+        function draw(space){
+            let ctx = space.ctx;
+            ctx.clearRect(0, 0, 1280, 720);
+            for (let i of space.dots.keys()){
+                let dot = space.dots.get(i);
+                dot.drawDot(space.ang_a, space.ang_b);
+            }
+            for (let j of space.edges.keys()){
+                let edge = space.edges.get(j);
+                edge.drawEdge(space.ang_a, space.ang_b);
+            }
+        }
+        let canvas = document.getElementById("space");
+        let dot = document.getElementById("dot");
+        let x = document.getElementById("x");
+        let y = document.getElementById("y");
+        let z = document.getElementById("z");
+        let cdot = document.getElementById("create_dot");
+        let ddot = document.getElementById("deldot");
+        let del_dot = document.getElementById("del_dot");
+        let dot1 = document.getElementById("dot1");
+        let dot2 = document.getElementById("dot2");
+        let cedge = document.getElementById("create_edge");
+        let deldot1 = document.getElementById("deldot1");
+        let deldot2 = document.getElementById("deldot2");
+        let del_edge = document.getElementById("del_edge");
+        let ctx = canvas.getContext("2d");
+        let space = new Space(ctx);
+        cdot.addEventListener("click", (e) =>{
+            let isin = false;
+            for (let i of space.dots.keys()){
+                if (i === dot.value) isin = true;
+            }
+            if (isin){
+                let edges = space.dots.get(dot.value).edges;
+                space.delDot(dot.value);
+                space.addDot(dot.value, Number(x.value), Number(y.value), Number(z.value));
+                for (let edge of edges){
+                    space.addEdge(edge[0], edge[1]);
+                };
+            }
+            else{
+                space.addDot(dot.value, Number(x.value), Number(y.value), Number(z.value));
+                draw(space);
+            }
+        });
+        cedge.addEventListener("click", (e) => {
+            space.addEdge(dot1.value, dot2.value);
+            draw(space);
+        });
+        del_dot.addEventListener("click", (e) => {
+            space.delDot(ddot.value);
+            draw(space);
+        });
+        del_edge.addEventListener("click", (e) =>{
+            space.delEdge(deldot1.value, deldot2.value);
+            draw(space);
+        })
+        canvas.addEventListener('mousedown', (e) => {
+            space.is_rotate = true;
+        });
+        canvas.addEventListener('mousemove', (e) => {
+            let dx = e.movementX;
+            let dy = e.movementY;
+            space.rotate(dx, dy);
+            draw(space);
+        });
+        canvas.addEventListener('mouseup', (e) => {
+            space.is_rotate = false;
+        });
+        /* Задаём*/
+        /*space.addDot("O", 0, 0, 0);
+        space.addDot("X", 10000, 0, 0);
+        space.addDot("Y", 0, 10000, 0);
+        space.addDot("Z", 0, 0, 100000);
+        space.addDot("-X", -10000, 0, 0);
+        space.addDot("-Y", 0, -10000, 0);
+        space.addDot("-Z", 0, 0, -100000);
+        space.addEdge("O", "X");
+        space.addEdge("O", "Y");
+        space.addEdge("O", "Z");
+        space.addEdge("O", "-X");
+        space.addEdge("O", "-Y");
+        space.addEdge("O", "-Z");*/
+
+        /*Задаём точкии и рёбра кубика*/
+        space.addDot("A", 10, 10, 10);
+        space.addDot("B", 10, 10, -10);
+        space.addDot("C", 10, -10, -10);
+        space.addDot("D", 10, -10, 10);
+        space.addDot("E", -10, 10, 10);
+        space.addDot("F", -10, 10, -10);
+        space.addDot("G", -10, -10, -10);
+        space.addDot("H", -10, -10, 10);
+        space.addEdge("A", "B");
+        space.addEdge("B", "C");
+        space.addEdge("C", "D");
+        space.addEdge("D", "A");
+        space.addEdge("E", "F");
+        space.addEdge("F", "G");
+        space.addEdge("G", "H");
+        space.addEdge("H", "E");
+        space.addEdge("A", "E");
+        space.addEdge("B", "F");
+        space.addEdge("C", "G");
+        space.addEdge("D", "H");
+        /*отрсовываем пространство*/
+        draw(space);
+    </script>
+</body>
+</html>
